@@ -1,15 +1,17 @@
-from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from main.models import EquipmentType, Equipment
 from main.serializers import EquipmentSerializer, EquipmentTypeSerializer
 import re
-from typing import Any, Dict, Final, List, Optional
+from typing import Any, Dict, Final, List, Optional, Tuple, Iterable
 
 
-def _validate_mask(mask: str, serial_number: str) -> bool:
+def _get_equipmenttypeids_via_serialnumber(serial_numbers: Iterable[str]) -> List[int]:
     """
-    валидация серийного номера по указанной маске
+    получение ID типа устройства по серийному номеру
     """
-    re_mask_list: List[str] = []
+    types: List[Tuple[str, int]] = list(
+        EquipmentType.objects.values_list('mask', 'id')
+    )
     d_mask: Final = {
         'N': r'[0-9]',
         'A': r'[A-Z]',
@@ -17,23 +19,22 @@ def _validate_mask(mask: str, serial_number: str) -> bool:
         'X': r'[A-Z0-9]',
         'Z': r'[\-_@]'
     }
-    for char in mask:
-        re_mask_list.append(d_mask[char])
-    return bool(re.fullmatch(''.join(re_mask_list), serial_number))
-
-
-def _get_equipmenttypeid_via_serialnumber(serial_number: str) -> int:
-    """
-    получение ID типа устройства по серийному номеру
-    """
-    mask: str
-    type_id: int
-    for mask, type_id in list(
-            EquipmentType.objects.values_list('mask', 'id')
-    ):
-        if _validate_mask(mask, serial_number):
-            return type_id
-    raise ValidationError('Invalid serial number=%(value)s', params={'value': serial_number})
+    for index in range(len(types)):
+        re_mask_list: List[str] = []
+        for char in types[index][0]:
+            re_mask_list.append(d_mask[char])
+        types[index] = (''.join(re_mask_list), types[index][1])
+    list_ids: List[int] = []
+    for serial_number in serial_numbers:
+        is_find = False
+        for mask, type_id in types:
+            if bool(re.fullmatch(mask, serial_number)):
+                list_ids.append(type_id)
+                is_find = True
+                break
+        if not is_find:
+            list_ids.append(0)
+    return list_ids
 
 
 def list_equipments(page=1, count=20, serial_number='', note='') -> List[Dict[str, Any]]:
@@ -41,7 +42,7 @@ def list_equipments(page=1, count=20, serial_number='', note='') -> List[Dict[st
     список устройств
     """
     offset = count * (page - 1)
-    query = Equipment.objects.select_related('equipmenttype')[offset: offset + count]
+    query = Equipment.objects.select_related('equipmenttype')
     if serial_number:
         query = query.filter(
             serial_number__contains=serial_number
@@ -50,7 +51,7 @@ def list_equipments(page=1, count=20, serial_number='', note='') -> List[Dict[st
         query = query.filter(
             note__icontains=note
         )
-    return EquipmentSerializer(query).data
+    return EquipmentSerializer(list(query[offset: offset + count]), many=True).data
 
 
 def get_equipment(equipment_id: int) -> Dict[str, Any]:
@@ -64,17 +65,33 @@ def get_equipment(equipment_id: int) -> Dict[str, Any]:
     ).data
 
 
-def create_equipment(serial_number: str, note: str) -> Dict[str, Any]:
+def create_equipments(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     создание устройства
     """
-    equipmenttype_id = _get_equipmenttypeid_via_serialnumber(serial_number)
-    equipment = Equipment.objects.create(
-        serial_number=serial_number,
-        note=note,
-        equipmenttype_id=equipmenttype_id
-    )
-    return EquipmentSerializer(equipment).data
+    list_ids = _get_equipmenttypeids_via_serialnumber(map(lambda el: el['serial_number'], data))
+    list_res: List[Dict[str, Any]] = []
+    for data, equipmenttype_id in zip(data, list_ids):
+        serial_number = data['serial_number']
+        if not equipmenttype_id:
+            list_res.append({
+                'status': 'FAIL',
+                'message': f'Invalid serial_number = "{serial_number}"'
+            })
+            continue
+        try:
+            equipment = Equipment.objects.create(
+                serial_number=serial_number,
+                note=data['note'],
+                equipmenttype_id=equipmenttype_id
+            )
+            list_res.append(EquipmentSerializer(equipment).data)
+        except IntegrityError:
+            list_res.append({
+                'status': 'FAIL',
+                'message': f'Device exists. Serial_number = "{serial_number}"'
+            })
+    return list_res
 
 
 def change_equipment(
@@ -86,7 +103,12 @@ def change_equipment(
     equipment: Equipment = Equipment.objects.get(id__exact=equipment_id)
     update_fields: List[str] = []
     if serial_number is not None and equipment.serial_number != serial_number:
-        equipmenttype_id = _get_equipmenttypeid_via_serialnumber(serial_number)
+        equipmenttype_id = _get_equipmenttypeids_via_serialnumber([serial_number])[0]
+        if not equipmenttype_id:
+            return {
+                'status': 'FAIL',
+                'message': f'Invalid serial_number = "{serial_number}"'
+            }
         equipment.serial_number = serial_number
         update_fields.append('serial_number')
         if equipment.equipmenttype_id != equipmenttype_id:
