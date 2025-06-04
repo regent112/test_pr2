@@ -4,4 +4,4 @@ main/migrations/*
 db.sqlite3
 main/__pycache__/
 test_pr2/__pycache__/
-test_createtypes.py
+

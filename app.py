@@ -1,6 +1,6 @@
 import cherrypy
 import json
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Union
 import os
 import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "test_pr2.settings")
@@ -23,12 +23,25 @@ def _get_bytes(f: Callable) -> Callable:
 @cherrypy.expose
 class Equipments(object):
     @_get_bytes
-    def GET(self, page=1, count=20, serial_number='', note='') -> List[Dict[str, Any]]:
-        return controllers.list_equipments(page=int(page), count=int(count), serial_number=serial_number, note=note)
+    def GET(self, equipment_id=None, page=1, count=20, serial_number='', note='') -> Union[
+        List[Dict[str, Any]], Dict[str, Any]
+    ]:
+        if equipment_id is None:
+            return controllers.list_equipments(page=int(page), count=int(count), serial_number=serial_number, note=note)
+        else:
+            return controllers.get_equipment(int(equipment_id))
 
     @_get_bytes
     def POST(self, equipments: str) -> List[Dict[str, Any]]:
         return controllers.create_equipments(json.loads(equipments))
+
+    @_get_bytes
+    def PUT(self, equipment_id: str, serial_number: Optional[str] = None, note: Optional[str] = None) -> Dict[str, Any]:
+        return controllers.change_equipment(int(equipment_id), serial_number, note)
+
+    @_get_bytes
+    def DELETE(self, equipment_id: str) -> Dict[str, Any]:
+        return controllers.delete_equipment(int(equipment_id))
 
 
 if __name__ == '__main__':

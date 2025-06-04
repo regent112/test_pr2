@@ -122,11 +122,12 @@ def change_equipment(
     return EquipmentSerializer(equipment).data
 
 
-def delete_equipment(equipment_id: int) -> None:
+def delete_equipment(equipment_id: int) -> Dict[str, Any]:
     """
     удаление устройства
     """
     Equipment.objects.filter(id__exact=equipment_id).delete()
+    return {'status': 'OK', 'message': f'Equipment {equipment_id} deleted'}
 
 
 def list_equipmenttypes(page=1, count=20, mask='', name='') -> List[Dict[str, Any]]:
