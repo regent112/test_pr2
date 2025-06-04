@@ -44,6 +44,13 @@ class Equipments(object):
         return controllers.delete_equipment(int(equipment_id))
 
 
+@cherrypy.expose
+class EquipmentTypes(object):
+    @_get_bytes
+    def GET(self, page=1, count=20, mask='', name='') -> List[Dict[str, Any]]:
+        return controllers.list_equipmenttypes(page=int(page), count=int(count), mask=mask, name=name)
+
+
 if __name__ == '__main__':
     conf = {
         '/equipment': {
@@ -51,7 +58,14 @@ if __name__ == '__main__':
             'tools.response_headers.on': True,
             'tools.response_headers.headers': [('Content-Type', 'application/json')],
         },
+        '/equipment-type': {
+            'request.dispatch': cherrypy.dispatch.MethodDispatcher(),
+            'tools.response_headers.on': True,
+            'tools.response_headers.headers': [('Content-Type', 'application/json')],
+            'controllers': EquipmentTypes()
+        },
     }
     api = Api()
     api.equipment = Equipments()
+    api.__setattr__('equipment-type', EquipmentTypes())
     cherrypy.quickstart(api, '/api/', conf)

@@ -7,7 +7,7 @@ from typing import Any, Dict, Final, List, Optional, Tuple, Iterable
 
 def _get_equipmenttypeids_via_serialnumber(serial_numbers: Iterable[str]) -> List[int]:
     """
-    получение ID типа устройства по серийному номеру
+    получение списка ID типов устройств по серийным номерам
     """
     types: List[Tuple[str, int]] = list(
         EquipmentType.objects.values_list('mask', 'id')
@@ -67,7 +67,7 @@ def get_equipment(equipment_id: int) -> Dict[str, Any]:
 
 def create_equipments(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    создание устройства
+    создание списка устройств
     """
     list_ids = _get_equipmenttypeids_via_serialnumber(map(lambda el: el['serial_number'], data))
     list_res: List[Dict[str, Any]] = []
@@ -135,7 +135,7 @@ def list_equipmenttypes(page=1, count=20, mask='', name='') -> List[Dict[str, An
     список типов устройств
     """
     offset = count * (page - 1)
-    query = EquipmentType.objects.all()[offset: offset + count]
+    query = EquipmentType.objects.all()
     if mask:
         query = query.filter(
             mask__contains=mask
@@ -144,4 +144,4 @@ def list_equipmenttypes(page=1, count=20, mask='', name='') -> List[Dict[str, An
         query = query.filter(
             name__icontains=name
         )
-    return EquipmentTypeSerializer(query).data
+    return EquipmentTypeSerializer(list(query[offset: offset + count]), many=True).data
